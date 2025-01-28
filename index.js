@@ -183,28 +183,32 @@ async function run() {
     });
 
     app.get("/products/my-products", verifyToken, async (req, res) => {
-  const email = req.decoded.email;
-  try {
-    const result = await productsCollection.find({ owner: email }).toArray();
-    res.send(result);
-  } catch (error) {
-    res.status(500).send({ message: "Failed to fetch products", error });
-  }
-});
+      const email = req.decoded.email;
+      try {
+        const result = await productsCollection.find({ owner: email }).toArray();
+        res.send(result);
+      } catch (error) {
+        res.status(500).send({ message: "Failed to fetch products", error });
+      }
+    });
 
 
     app.patch("/products/upvote/:id", verifyToken, validateObjectId, async (req, res) => {
       const productId = req.params.id;
       const userId = req.decoded.email;
-
+    
       const product = await productsCollection.findOne({ _id: new ObjectId(productId) });
-      if (product.voters.includes(userId)) {
+      if (!product) {
+        return res.status(404).send({ message: "Product not found" });
+      }
+    
+      if (product.voters?.includes(userId)) {
         return res.status(400).send({ message: "Already voted" });
       }
-
+    
       const result = await productsCollection.updateOne(
         { _id: new ObjectId(productId) },
-        { $inc: { upvotes: 1 }, $push: { voters: userId } }
+        { $inc: { upvote: 1 }, $push: { voters: userId } }
       );
       res.send(result);
     });
@@ -239,23 +243,27 @@ async function run() {
       res.send(result);
     });
 
-    app.get("/products/search", validateObjectId, async (req, res) => {
+    app.get("/products/search", async (req, res) => {
       const searchTerm = req.query.term;
       const page = parseInt(req.query.page) || 1;
+      if (isNaN(page) || page < 1) {
+        return res.status(400).send({ message: "Invalid page number" });
+      }
+    
       const limit = 6;
       const skip = (page - 1) * limit;
-
+    
       const query = searchTerm ? { tags: { $regex: searchTerm, $options: "i" } } : {};
-
+    
       const products = await productsCollection
         .find(query)
         .skip(skip)
         .limit(limit)
         .toArray();
-
+    
       const totalProducts = await productsCollection.countDocuments(query);
       const totalPages = Math.ceil(totalProducts / limit);
-
+    
       res.send({ products, totalPages, currentPage: page });
     });
 
