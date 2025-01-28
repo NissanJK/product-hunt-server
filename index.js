@@ -20,8 +20,8 @@ const client = new MongoClient(uri, {
 
 async function run() {
   try {
-    await client.connect();
-    console.log("Connected to MongoDB!");
+    //await client.connect();
+    //console.log("Connected to MongoDB!");
 
     const db = client.db("productHuntDb");
     const usersCollection = db.collection("users");
@@ -96,7 +96,30 @@ async function run() {
       const result = await usersCollection.findOne({ email });
       res.send(result);
     });
+    app.get("/users/moderator/:email", verifyToken, async (req, res) => {
+      const email = req.params.email;
+      const user = await usersCollection.findOne({ email });
+      if (!user) {
+        return res.status(404).send({ message: "User not found" });
+      }
+      res.send({ moderator: user.role === "moderator" });
+    });
 
+    app.get("/moderator-only", verifyToken, verifyModerator, (req, res) => {
+      res.send({ message: "This is a moderator-only route!" });
+    });
+    app.get("/users/admin/:email", verifyToken, async (req, res) => {
+      const email = req.params.email;
+      const user = await usersCollection.findOne({ email });
+      if (!user) {
+        return res.status(404).send({ message: "User not found" });
+      }
+      res.send({ admin: user.role === "admin" });
+    });
+
+    app.get("/admin-only", verifyToken, verifyAdmin, (req, res) => {
+      res.send({ message: "This is a admin-only route!" });
+    });
     app.patch("/users/make-moderator/:id", verifyToken, verifyAdmin, validateObjectId, async (req, res) => {
       const id = req.params.id;
       const filter = { _id: new ObjectId(id) };
@@ -267,7 +290,7 @@ async function run() {
     });
     app.post('/payments', verifyToken, async (req, res) => {
       const payment = req.body;
-      const result = await paymentsCollection.insertOne(payment);
+      const result = await paymentCollection.insertOne(payment);
       res.send({ paymentResult: result });
     });
     app.patch('/users/update-subscription/:email', verifyToken, async (req, res) => {
