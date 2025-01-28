@@ -244,8 +244,9 @@ async function run() {
     });
 
     app.get("/products/search", async (req, res) => {
-      const searchTerm = req.query.term;
-      const page = parseInt(req.query.page) || 1;
+      const searchTerm = req.query.term || ""; 
+      const page = parseInt(req.query.page, 10) || 1;
+    
       if (isNaN(page) || page < 1) {
         return res.status(400).send({ message: "Invalid page number" });
       }
@@ -253,19 +254,27 @@ async function run() {
       const limit = 6;
       const skip = (page - 1) * limit;
     
-      const query = searchTerm ? { tags: { $regex: searchTerm, $options: "i" } } : {};
+      try {
+        const query = searchTerm.trim()
+          ? { tags: { $regex: searchTerm.trim(), $options: "i" } }
+          : {}; 
     
-      const products = await productsCollection
-        .find(query)
-        .skip(skip)
-        .limit(limit)
-        .toArray();
+        const products = await productsCollection
+          .find(query)
+          .skip(skip)
+          .limit(limit)
+          .toArray();
     
-      const totalProducts = await productsCollection.countDocuments(query);
-      const totalPages = Math.ceil(totalProducts / limit);
+        const totalProducts = await productsCollection.countDocuments(query);
+        const totalPages = Math.ceil(totalProducts / limit);
     
-      res.send({ products, totalPages, currentPage: page });
+        res.send({ products, totalPages, currentPage: page });
+      } catch (error) {
+        console.error("Error fetching products:", error);
+        res.status(500).send({ message: "Internal server error" });
+      }
     });
+    
 
     app.get("/reviews/:productId", async (req, res) => {
       const productId = req.params.productId;
