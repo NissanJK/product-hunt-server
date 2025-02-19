@@ -176,11 +176,24 @@ async function run() {
       res.send(result);
     });
 
-    app.post("/products", verifyToken, async (req, res) => {
-      const product = req.body;
-      const result = await productsCollection.insertOne(product);
-      res.send(result);
+    app.post("/products", async (req, res) => {
+      try {
+        const { name, description, tags, upvotes = 0 } = req.body;
+
+        if (!name || !description || !Array.isArray(tags)) {
+          return res.status(400).json({ message: "Invalid product data" });
+        }
+
+        const newProduct = { name, description, tags, upvotes, createdAt: new Date() };
+        const result = await productsCollection.insertOne(newProduct);
+
+        res.status(201).json({ message: "Product added successfully", productId: result.insertedId });
+      } catch (err) {
+        console.error("Error adding product:", err);
+        res.status(500).json({ message: "Internal server error" });
+      }
     });
+
 
     app.get("/products/my-products", verifyToken, async (req, res) => {
       const email = req.decoded.email;
@@ -196,16 +209,16 @@ async function run() {
     app.patch("/products/upvote/:id", verifyToken, validateObjectId, async (req, res) => {
       const productId = req.params.id;
       const userId = req.decoded.email;
-    
+
       const product = await productsCollection.findOne({ _id: new ObjectId(productId) });
       if (!product) {
         return res.status(404).send({ message: "Product not found" });
       }
-    
+
       if (product.voters?.includes(userId)) {
         return res.status(400).send({ message: "Already voted" });
       }
-    
+
       const result = await productsCollection.updateOne(
         { _id: new ObjectId(productId) },
         { $inc: { upvote: 1 }, $push: { voters: userId } }
@@ -243,38 +256,27 @@ async function run() {
       res.send(result);
     });
 
-    app.get("/products/search", async (req, res) => {
-      const searchTerm = req.query.term || ""; 
-      const page = parseInt(req.query.page, 10) || 1;
-    
-      if (isNaN(page) || page < 1) {
-        return res.status(400).send({ message: "Invalid page number" });
-      }
-    
-      const limit = 6;
-      const skip = (page - 1) * limit;
-    
+    app.get("/products", async (req, res) => {
       try {
-        const query = searchTerm.trim()
-          ? { tags: { $regex: searchTerm.trim(), $options: "i" } }
-          : {}; 
-    
-        const products = await productsCollection
-          .find(query)
-          .skip(skip)
-          .limit(limit)
-          .toArray();
-    
-        const totalProducts = await productsCollection.countDocuments(query);
-        const totalPages = Math.ceil(totalProducts / limit);
-    
-        res.send({ products, totalPages, currentPage: page });
-      } catch (error) {
-        console.error("Error fetching products:", error);
-        res.status(500).send({ message: "Internal server error" });
+        const { search } = req.query;
+        const query = search
+          ? {
+            $or: [
+              { name: { $regex: search, $options: "i" } },
+              { description: { $regex: search, $options: "i" } },
+              { tags: { $in: [new RegExp(search, "i")] } },
+            ],
+          }
+          : {};
+
+        const products = await productsCollection.find(query).toArray();
+        res.status(200).json(products);
+      } catch (err) {
+        console.error("Error fetching products:", err);
+        res.status(500).json({ message: "Internal server error" });
       }
     });
-    
+
 
     app.get("/reviews/:productId", async (req, res) => {
       const productId = req.params.productId;
